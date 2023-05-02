@@ -523,7 +523,8 @@ static void DrawPpuFrameWithPerf() {
   /*int render_scale = PpuGetCurrentRenderScale(g_zenv.ppu, g_ppu_render_flags);*/
   wdog_refresh();
 
-  uint8 *pixel_buffer = framebuffer + 320*8 + 32;    // Start 8 rows from the top, 32 pixels from left
+  pixel_t *fb = lcd_get_active_buffer();
+  uint8 *pixel_buffer = fb + 320*8 + 32;    // Start 8 rows from the top, 32 pixels from left
   int pitch = 320 * 2; // FIXME WIDTH * BPP; // FIXME 0;
 
   //ZeldaDrawPpuFrame(pixel_buffer, pitch, g_ppu_render_flags); // FIXME SHOULD DRAW RGB565 !!!
@@ -538,10 +539,10 @@ static void DrawPpuFrameWithPerf() {
   uint32 after = HAL_GetTick();
 
   // Draw borders
-  draw_border(framebuffer);
+  draw_border(fb);
 
   if(after - overlay_start_ms < OVERLAY_DURATION_MS){
-    draw_ingame_overlay(framebuffer, ingame_overlay);
+    draw_ingame_overlay(fb, ingame_overlay);
   }
   else{
     ingame_overlay = INGAME_OVERLAY_NONE;
@@ -556,38 +557,38 @@ static void DrawPpuFrameWithPerf() {
 #if RENDER_FPS
   // Render fps with dots
   for (uint8_t y = 1; y<=60; y++) {
-    framebuffer[y*2*320+300] = (y <= g_curr_fps ? 0x07e0 : 0xf800);
+    fb[y*2*320+300] = (y <= g_curr_fps ? 0x07e0 : 0xf800);
   }
   if (!statsInit || (frameCtr % FRAMERATE) == 0) {
     stats = odroid_system_get_stats();
     statsInit = true;
   }
   for (uint8_t y = 1; y<=FRAMERATE; y++) {
-    framebuffer[y*2*320+302] = (y <= (stats.totalFPS - stats.skippedFPS) ? 0x07e0 : 0xf800);
+    fb[y*2*320+302] = (y <= (stats.totalFPS - stats.skippedFPS) ? 0x07e0 : 0xf800);
   }
   for (uint8_t y = 1; y<=stats.skippedFPS; y++) {
-    framebuffer[y*2*320+303] = 0xffff;
+    fb[y*2*320+303] = 0xffff;
   }
 
   // Render audio volume
   for (uint8_t y = 1; y<=AUDIO_VOLUME_MAX; y++) {
-    framebuffer[y*2*320+305] = (y <= volume ? 0x07e0 : 0x7bef);
+    fb[y*2*320+305] = (y <= volume ? 0x07e0 : 0x7bef);
   }
 
   // Render brightness level
   for (uint8_t y = 1; y<=BRIGHTNESS_MAX; y++) {
-    framebuffer[y*2*320+310] = (y <= brightness ? 0x07e0 : 0x7bef);
+    fb[y*2*320+310] = (y <= brightness ? 0x07e0 : 0x7bef);
   }
 
   // Render frame counter with dots
-  /*memset(&framebuffer[235*320], 0, sizeof(uint16_t)*320*5);
+  /*memset(&fb[235*320], 0, sizeof(uint16_t)*320*5);
   for (uint16_t x = 1; x<=(renderedFrameCtr%(160*5)); x++) {
-    framebuffer[235*320+x*2] = 0x07e0;  // FIXME WIDTH
+    fb[235*320+x*2] = 0x07e0;  // FIXME WIDTH
   }*/
 
   // Render overclocking level with dots
   for (uint16_t x = 0; x<=OVERCLOCK; x++) {
-    framebuffer[2*320+5+x*2] = 0x07e0;
+    fb[2*320+5+x*2] = 0x07e0;
   }
 #endif
 }
@@ -920,7 +921,7 @@ void app_main(void)
         ZeldaRenderAudio(audiobuffer, AUDIO_BUFFER_LENGTH, 1);
         #endif /* LIMIT_30FPS*/
 
-        if (drawFrame) {
+        if (!is_lcd_swap_pending() &&  drawFrame) {
         
           pcm_submit();
           ZeldaDiscardUnusedAudioFrames();
@@ -939,6 +940,7 @@ void app_main(void)
           prevFrameTick = HAL_GetTick();
           renderedFrameCtr++;
           DrawPpuFrameWithPerf();
+          lcd_swap();
           prevTime = HAL_GetTick() - prevFrameTick;
         }
 

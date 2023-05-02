@@ -1,12 +1,73 @@
 #include "lcd.h"
 #include "stm32h7xx_hal.h"
 #include "main.h"
+#include <stdbool.h>
 
-uint16_t framebuffer[GW_LCD_WIDTH * GW_LCD_HEIGHT];
+volatile bool active_framebuffer;
+uint16_t framebuffer1[GW_LCD_WIDTH * GW_LCD_HEIGHT];
+uint16_t framebuffer2[GW_LCD_WIDTH * GW_LCD_HEIGHT];
+uint32_t frame_counter = 0;
 
+// defined in Core/Src/main.c
 extern DAC_HandleTypeDef hdac1;
 extern DAC_HandleTypeDef hdac2;
+extern LTDC_HandleTypeDef hltdc;
 
+
+void HAL_LTDC_ReloadEventCallback (LTDC_HandleTypeDef *hltdc) {
+  frame_counter++;
+  if (active_framebuffer) {
+    HAL_LTDC_SetAddress(hltdc, (uint32_t) framebuffer1, 0);
+  } else {
+    HAL_LTDC_SetAddress(hltdc, (uint32_t) framebuffer2, 0);
+  }
+}
+
+uint32_t is_lcd_swap_pending(void)
+{
+  return (uint32_t) ((hltdc.Instance->SRCR) & (LTDC_SRCR_VBR | LTDC_SRCR_IMR));
+}
+
+void lcd_swap(void)
+{
+  HAL_LTDC_Reload(&hltdc, LTDC_RELOAD_VERTICAL_BLANKING);
+  active_framebuffer = !active_framebuffer;
+}
+
+void lcd_sync(void)
+{
+  // copy active buffer to inactive buffer
+  void *active = lcd_get_active_buffer();
+  void *inactive = lcd_get_inactive_buffer();
+
+  if (active != inactive) {
+    memcpy(inactive, active, sizeof(framebuffer1));
+  }
+}
+
+void* lcd_get_active_buffer(void)
+{
+  return active_framebuffer ? framebuffer2 : framebuffer1;
+}
+
+void* lcd_get_inactive_buffer(void)
+{
+  return active_framebuffer ? framebuffer1 : framebuffer2;
+}
+
+void lcd_reset_active_buffer(void)
+{
+  HAL_LTDC_SetAddress(&hltdc, (uint32_t) framebuffer1, 0);
+  active_framebuffer = false;
+}
+
+void lcd_wait_for_vblank(void)
+{
+  uint32_t old_counter = frame_counter;
+  while (old_counter == frame_counter) {
+    __asm("nop");
+  }
+}
 void lcd_backlight_off() {
   /*HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
@@ -34,10 +95,11 @@ void lcd_backlight_set(uint8_t brightness)
 }
 
 void lcd_fill_framebuffer(uint8_t r, uint8_t g, uint8_t b) {
+  uint16_t *fb = lcd_get_active_buffer();
   uint16_t color = ((r & 0x1f) << 11) | ((g & 0x3f) << 5) | (b & 0x1f);
   for (int y = 0; y < GW_LCD_HEIGHT; y++) {
       for (int x = 0; x < GW_LCD_WIDTH; x++) {
-          framebuffer[y*GW_LCD_WIDTH + x] = color;  // RGB565
+          fb[y*GW_LCD_WIDTH + x] = color;  // RGB565
       }
   }
 }
@@ -160,7 +222,7 @@ void lcd_init(SPI_HandleTypeDef *spi, LTDC_HandleTypeDef *ltdc) {
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_12, GPIO_PIN_SET);
 
 
-  HAL_LTDC_SetAddress(ltdc,(uint32_t) &framebuffer,0);
+  lcd_reset_active_buffer();
 
   lcd_backlight_on();
 }

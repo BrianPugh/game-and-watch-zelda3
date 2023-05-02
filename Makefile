@@ -475,13 +475,6 @@ OPENOCD ?= openocd
 ADAPTER ?= jlink
 OCDIFACE ?= scripts/interface_$(ADAPTER).cfg
 
-#flash: $(BUILD_DIR)/$(TARGET).bin
-#	dd if=$(BUILD_DIR)/$(TARGET).bin of=$(BUILD_DIR)/$(TARGET)_flash.bin bs=1024 count=128
-#	$(OPENOCD) -f $(OCDIFACE) -c "transport select hla_swd" -f "target/stm32h7x.cfg" -c "reset_config none; program $(BUILD_DIR)/$(TARGET)_flash.bin 0x08000000 verify reset exit"
-
-#.PHONY: flash
-
-
 $(BUILD_DIR)/$(TARGET)_extflash.bin: $(BUILD_DIR)/$(TARGET).elf | $(BUILD_DIR)
 #	$(V)$(ECHO) [ BIN ] $(notdir $@)
 	$(V)$(BIN) -j ._itcram_hot -j ._dtcram_hot -j ._ahbram_hot -j ._ram_exec -j ._extflash $< $(BUILD_DIR)/$(TARGET)_extflash.bin
@@ -489,7 +482,6 @@ $(BUILD_DIR)/$(TARGET)_extflash.bin: $(BUILD_DIR)/$(TARGET).elf | $(BUILD_DIR)
 $(BUILD_DIR)/$(TARGET)_intflash.bin: $(BUILD_DIR)/$(TARGET).elf | $(BUILD_DIR)
 #	$(V)$(ECHO) [ BIN ] $(notdir $@)
 	$(V)$(BIN) -j .isr_vector -j .text -j .rodata -j .ARM.extab -j .preinit_array -j .init_array -j .fini_array -j .data $< $(BUILD_DIR)/$(TARGET)_intflash.bin
-
 
 
 
@@ -510,6 +502,18 @@ flash:
 	$(V)$(MAKE) reset_dbgmcu 
 .PHONY: flash
 
+# Flashes using an existing openocd instance
+flash_intflash_nc: $(BUILD_DIR)/$(TARGET)_intflash.bin
+	echo "program $< $(INTFLASH_ADDRESS) verify reset" | nc -c localhost 4444
+.PHONY: flash_intflash_nc
+
+gdb: $(BUILD_DIR)/$(TARGET).elf
+	$(GDB) $< -ex "target extended-remote :3333"
+.PHONY: gdb
+
+# Flashes intflash *only* and launches gdb afterwards
+gdb_intflash: flash_intflash_nc gdb
+.PHONY: gdb_intflash
 
 reset:
 	$(OPENOCD) -f $(OCDIFACE) -c "init; reset; exit"
@@ -522,7 +526,7 @@ reset_dbgmcu:
 
 # Starts openocd and attaches to the target. To be used with 'flash_intflash_nc' and 'gdb'
 openocd:
-	$(OPENOCD) -f $(OCDIFACE).cfg -c "init; halt"
+	$(OPENOCD) -f $(OCDIFACE) -c "init; halt"
 .PHONY: openocd
 
 dump_logs: $(BUILD_DIR)/$(TARGET).elf
