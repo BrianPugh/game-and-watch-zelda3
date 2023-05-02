@@ -46,6 +46,8 @@ assets_location = [
         (161,   'intflash'),     # Overworld Sprites graphics    (256 B)
         (162,   'intflash'),     # Overworld Sprites palettes    (256 B)
 ]
+# Force all assets to extflash; leaving above and surrounding code incase we want to reverse this decision.
+assets_location = []
 assets_in_intflash = [index for (index, location) in assets_location if location == 'intflash']
 assets_in_ram = [index for (index, location) in assets_location if location == 'ram']
 assets_in_extflash = [index for index in range(165) if index not in assets_in_intflash and index not in assets_in_ram]
