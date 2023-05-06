@@ -1013,8 +1013,10 @@ int main(void)
 
   // Initialize the external flash
 
-  //SCB_EnableICache();
-  //SCB_EnableDCache();
+  SCB_InvalidateICache();
+  SCB_EnableICache();
+  SCB_InvalidateDCache();
+  SCB_EnableDCache();
 
   OSPI_Init(&hospi1);
 
